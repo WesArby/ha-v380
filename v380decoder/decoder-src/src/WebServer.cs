@@ -116,10 +116,20 @@ namespace V380Decoder.src
                 app.MapPost("/api/image/auto", () => { client.ImageAuto(); LogUtils.debug("[API] Image Auto"); Results.Ok(); });
                 app.MapPost("/api/image/flip", () => { client.ImageFlip(); LogUtils.debug("[API] Image Flip"); Results.Ok(); });
 
+                app.MapPost("/api/alarm/on", () => { var (ok, code) = client.SetAlarm(true); LogUtils.debug($"[API] Alarm On -> {code}"); return ok ? Results.Ok(new { result = code }) : Results.Json(new { result = code }, statusCode: 500); });
+                app.MapPost("/api/alarm/off", () => { var (ok, code) = client.SetAlarm(false); LogUtils.debug($"[API] Alarm Off -> {code}"); return ok ? Results.Ok(new { result = code }) : Results.Json(new { result = code }, statusCode: 500); });
+
                 app.MapGet("/api/status", () => Results.Ok(new StatusResponse
                 {
                     status = "running",
-                    timestamp = DateTime.Now
+                    timestamp = DateTime.Now,
+                    power_source = client.PowerSource,
+                    video_standard = client.VideoStandard,
+                    speaker_vol = client.SpeakerVol,
+                    xparam_rtsp = client.XParamRtspEnable,
+                    xparam_vtype = client.XParamVideoType,
+                    wifi = client.LastWifiHex,
+                    battery = client.LastBatteryHex
                 }));
             }
 

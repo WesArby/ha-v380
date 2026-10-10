@@ -39,6 +39,14 @@
       "ptz_down": { "name": "PTZ down" },
       "ptz_left": { "name": "PTZ left" },
       "ptz_right": { "name": "PTZ right" }
+    },
+    "switch": {
+      "alarm": { "name": "Motion alarm" }
+    },
+    "sensor": {
+      "power_source": { "name": "Power source" },
+      "wifi_info": { "name": "WiFi info" },
+      "battery_info": { "name": "Battery info" }
     }
   }
 }

@@ -169,14 +169,6 @@ namespace V380Decoder.src
             return now;
         }
 
-        uint AudioClock()
-        {
-            uint now = (uint)(8 * (Environment.TickCount64 - playStartMs));
-            if (now <= lastAudioRts && lastAudioRts != 0) now = lastAudioRts + 8;
-            lastAudioRts = now;
-            return now;
-        }
-
         public void PushVideo(FrameData f)
         {
             if (!playing) return;
@@ -262,14 +254,62 @@ namespace V380Decoder.src
         {
             if (!playing) return;
 
-            uint rts = AudioClock();
-            const int chunkSize = 160;
-            for (int off = 0; off < f.Payload.Length; off += chunkSize)
+            // Camera audio is AAC-LC (ADTS). Serve as RFC 3640 mpeg4-generic:
+            // strip the 7/9-byte ADTS header, prepend AU headers. One AAC
+            // frame = 1024 samples, so timestamps advance by 1024 per frame.
+            foreach (var aac in ExtractAacFrames(f.Payload))
             {
-                int len = Math.Min(chunkSize, f.Payload.Length - off);
-                SendRtp(audioCh, 8, audioSeq++, rts, audioSsrc, f.Payload, off, len, marker: false);
-                rts += (uint)len;
+                uint rts = NextAudioRts();
+                byte[] pkt = new byte[4 + aac.Length];
+                // AU-headers-length (16 bits) = 16
+                pkt[0] = 0; pkt[1] = 16;
+                int size = aac.Length;
+                // AU-header: AU-size (13b) | AU-Index (3b, =0)
+                pkt[2] = (byte)((size >> 5) & 0xFF);
+                pkt[3] = (byte)(((size & 0x1F) << 3) & 0xFF);
+                Array.Copy(aac, 0, pkt, 4, aac.Length);
+                SendRtp(audioCh, 96, audioSeq++, rts, audioSsrc, pkt, 0, pkt.Length, marker: true);
             }
+        }
+
+        uint NextAudioRts()
+        {
+            uint now = (uint)(8 * (Environment.TickCount64 - playStartMs));
+            if (now <= lastAudioRts && lastAudioRts != 0) now = lastAudioRts + 1024;
+            lastAudioRts = now;
+            return now;
+        }
+
+        System.Collections.Generic.List<byte[]> ExtractAacFrames(byte[] data)
+        {
+            var frames = new System.Collections.Generic.List<byte[]>();
+            int i = 0;
+            int guard = 0;
+            while (i + 7 < data.Length && guard++ < 8)
+            {
+                // find ADTS syncword 0xFFFx
+                int sync = -1;
+                for (int j = i; j + 1 < data.Length && j < i + 512; j++)
+                {
+                    if (data[j] == 0xFF && (data[j + 1] & 0xF0) == 0xF0) { sync = j; break; }
+                }
+                if (sync < 0) break;
+                i = sync;
+                if (i + 7 >= data.Length) break;
+                bool noCrc = (data[i + 1] & 0x01) != 0;
+                int hdrLen = noCrc ? 7 : 9;
+                if (i + hdrLen > data.Length) break;
+                int frameLen = ((data[i + 3] & 0x03) << 11) | (data[i + 4] << 3) | (data[i + 5] >> 5);
+                if (frameLen < hdrLen || i + frameLen > data.Length) break;
+                // report ASC to server for SDP (first frame wins)
+                if (i == sync)
+                    server.ReportAudioConfig(data[i + 1], data[i + 2], data[i + 3]);
+                var raw = new byte[frameLen - hdrLen];
+                Array.Copy(data, i + hdrLen, raw, 0, raw.Length);
+                frames.Add(raw);
+                i += frameLen;
+            }
+            return frames;
         }
 
         void SendRtp(byte channel, byte pt, ushort seq, uint ts, uint ssrc,

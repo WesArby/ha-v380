@@ -96,3 +96,15 @@ class V380Api:
                 resp.raise_for_status()
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise V380Error(f"Light {mode} failed: {err}") from err
+
+    async def async_set_alarm(self, armed: bool) -> None:
+        """Arm/disarm the motion alarm master switch."""
+        action = "on" if armed else "off"
+        try:
+            async with self._session.post(
+                f"{self.base_url}{API_ALARM.format(action=action)}",
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                resp.raise_for_status()
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            raise V380Error(f"Alarm {action} failed: {err}") from err

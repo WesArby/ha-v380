@@ -18,8 +18,30 @@ namespace V380Decoder.src
         private byte[] cachedSps;
         private byte[] cachedPps;
         private byte[] cachedVps;
+        private string cachedAudioConfig = "1210"; // AAC-LC 8kHz mono fallback
         private VideoCodec streamCodec = VideoCodec.Unknown;
         private readonly object sdpLock = new();
+
+        public void ReportAudioConfig(byte sync1, byte profileByte, byte freqByte)
+        {
+            // ADTS bytes 1..3 (after 0xFF sync): profile(2) sfi(4) chcfg(3);
+            // AOT = profile + 1. ASC = AOT(5) sfi(4) ch(4).
+            try
+            {
+                int profile = (profileByte >> 6) & 0x03;
+                int aot = profile + 1;
+                if (aot is < 1 or > 4) return;
+                int sfi = (profileByte >> 2) & 0x0F;
+                int ch = ((profileByte & 0x01) << 2) | ((freqByte >> 6) & 0x03);
+                byte asc0 = (byte)((aot << 3) | (sfi >> 1));
+                byte asc1 = (byte)(((sfi & 0x01) << 7) | (ch << 3));
+                lock (sdpLock)
+                {
+                    cachedAudioConfig = $"{asc0:X2}{asc1:X2}";
+                }
+            }
+            catch { }
+        }
 
         public RtspServer(int port)
         {
@@ -196,6 +218,18 @@ namespace V380Decoder.src
                 }
             }
 
+            string audioBlock;
+            lock (sdpLock)
+            {
+                // Camera audio is AAC-LC (ADTS), served as RFC 3640 mpeg4-generic.
+                audioBlock =
+                    "m=audio 0 RTP/AVP 96\r\n" +
+                    "a=rtpmap:96 mpeg4-generic/8000/1\r\n" +
+                    "a=fmtp:96 streamtype=5;profile-level-id=1;mode=AAC-hbr;"
+                    + $"config={cachedAudioConfig};SizeLength=13;IndexLength=3;IndexDeltaLength=3\r\n" +
+                    "a=control:trackID=1\r\n";
+            }
+
             return
                 "v=0\r\n" +
                 "o=- 1 1 IN IP4 0.0.0.0\r\n" +
@@ -203,9 +237,7 @@ namespace V380Decoder.src
                 "t=0 0\r\n" +
                 "a=recvonly\r\n" +
                 videoBlock +
-                "m=audio 0 RTP/AVP 8\r\n" +
-                "a=rtpmap:8 PCMA/8000/1\r\n" +
-                "a=control:trackID=1\r\n";
+                audioBlock;
         }
 
         public void Dispose()

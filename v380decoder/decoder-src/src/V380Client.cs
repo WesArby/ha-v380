@@ -27,6 +27,17 @@ namespace V380Decoder.src
         private int extractLogCount = 0;
         private VideoCodec lastVideoCodec = VideoCodec.H264;
 
+        // Device monitor (XParam GET 347, best-effort) + stream telemetry.
+        public int PowerSource { get; private set; } = -1;
+        public int VideoStandard { get; private set; } = -1;
+        public int SpeakerVol { get; private set; } = -1;
+        public int XParamRtspEnable { get; private set; } = -1;
+        public int XParamVideoType { get; private set; } = -1;
+        public string LastWifiHex { get; private set; } = "";
+        public string LastBatteryHex { get; private set; } = "";
+        public DateTime LastWifiAt { get; private set; }
+        public DateTime LastBatteryAt { get; private set; }
+
         private sealed class FragAssembly
         {
             public readonly List<byte> Frags = new List<byte>();
@@ -61,6 +72,8 @@ namespace V380Decoder.src
                     int auth = GetAuthTicket();
                     if (auth == 0) continue;
                     if (auth == -1) break;
+
+                    try { FetchDeviceParams(); } catch { }
 
                     if (!StreamLogin())
                     {
@@ -460,10 +473,22 @@ namespace V380Decoder.src
 
         private bool HandleAsMediaFrame(byte rawType, byte[] full, bool needDecrypt, OutputMode mode, RtspServer rtsp, Stream stdout)
         {
-            ushort outerFrameType = full.Length >= 6 ? ReadUInt16LE(full, 4) : (ushort)0;
-            uint outerFrameId = full.Length >= 4 ? ReadUInt32LE(full, 0) : 0;
+            ushort outerFrameType = full.Length >= 6 ? ReadUInt16LE(full, 4) : (ushort)0;            uint outerFrameId = full.Length >= 4 ? ReadUInt32LE(full, 0) : 0;
             ushort outerFrameRate = full.Length >= 8 ? ReadUInt16LE(full, 6) : (ushort)0;
             ulong outerTimestamp = full.Length >= 16 ? ReadUInt64LE(full, 8) : 0;
+
+            // Device telemetry (plaintext per parseFrameDataV20: 0x5B wifi and
+            // 0x5C battery go straight to callbacks with no decrypt).
+            if (rawType == 0x5B || rawType == 0x5C)
+            {
+                byte[] info = new byte[Math.Max(0, full.Length - 16)];
+                Array.Copy(full, 16, info, 0, info.Length);
+                string hex = BitConverter.ToString(info);
+                if (rawType == 0x5B) { LastWifiHex = hex; LastWifiAt = DateTime.Now; }
+                else { LastBatteryHex = hex; LastBatteryAt = DateTime.Now; }
+                Console.Error.WriteLine($"[TELEMETRY] type=0x{rawType:X2} len={info.Length} data={hex}");
+                return true;
+            }
 
             if (rawType == 0x1A || rawType == 0x15 || rawType == 0x18 || rawType == 0x19)
             {
@@ -1007,6 +1032,91 @@ namespace V380Decoder.src
         public string GetDeviceId()
         {
             return deviceId.ToString();
+        }
+
+        /// <summary>Best-effort XParam read (cmd 347) for power/video settings.</summary>
+        public void FetchDeviceParams()
+        {
+            try
+            {
+                using var c = new TcpClient();
+                var r = c.BeginConnect(ip, port, null, null);
+                if (!r.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(4))) return;
+                c.EndConnect(r);
+                using var s = c.GetStream();
+                var req = new byte[256];
+                WriteUInt32LE(req, 0, 347);
+                WriteUInt32LE(req, 4, deviceId);
+                req[8] = 1;
+                WriteUInt32LE(req, 9, authTicket);
+                s.Write(req, 0, req.Length);
+                s.Flush();
+                var resp = new byte[256];
+                int tot = 0;
+                var dl = DateTime.Now.AddSeconds(5);
+                while (tot < 256 && DateTime.Now < dl)
+                {
+                    if (!s.DataAvailable) { Thread.Sleep(20); continue; }
+                    int n = s.Read(resp, tot, 256 - tot);
+                    if (n <= 0) break;
+                    tot += n;
+                }
+                if (tot < 32) return;
+                if (ReadUInt32LE(resp, 0) != 447 || ReadUInt32LE(resp, 4) != 1001) return;
+                XParamRtspEnable = resp[17];
+                XParamVideoType = resp[19];
+                VideoStandard = resp[25];
+                PowerSource = resp[26];
+                SpeakerVol = resp[30];
+                Console.Error.WriteLine($"[XPARAM] rtsp={XParamRtspEnable} vtype={XParamVideoType} vstd={VideoStandard} power={PowerSource} spk={SpeakerVol}");
+            }
+            catch (Exception ex) { LogUtils.debug($"[XPARAM] {ex.Message}"); }
+        }
+
+        /// <summary>
+        /// One-key alarm arm/disarm (cmd 144,mirrors setOneKeyAlarmSetting:
+        /// [72]=1000 arm / 1001 disarm). Passwords ≤28 chars go plaintext
+        /// (changeDevPwd passthrough). Returns (ok, app-layer code).
+        /// </summary>
+        public (bool ok, int code) SetAlarm(bool arm)
+        {
+            try
+            {
+                using var c = new TcpClient();
+                var r = c.BeginConnect(ip, port, null, null);
+                if (!r.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(5))) return (false, -1);
+                c.EndConnect(r);
+                using var s = c.GetStream();
+                var req = new byte[412];
+                WriteUInt32LE(req, 0, 144);
+                var ub = Encoding.ASCII.GetBytes(username ?? "");
+                Array.Copy(ub, 0, req, 4, Math.Min(ub.Length, 32));
+                var pb = Encoding.ASCII.GetBytes(password ?? "");
+                Array.Copy(pb, 0, req, 36, Math.Min(pb.Length, 32));
+                WriteUInt32LE(req, 68, deviceId);
+                WriteUInt32LE(req, 72, arm ? 1000u : 1001u);
+                s.Write(req, 0, req.Length);
+                s.Flush();
+                var resp = new byte[412];
+                int tot = 0;
+                var dl = DateTime.Now.AddSeconds(8);
+                while (tot < 32 && DateTime.Now < dl)
+                {
+                    if (!s.DataAvailable) { Thread.Sleep(50); continue; }
+                    int n = s.Read(resp, tot, 412 - tot);
+                    if (n <= 0) break;
+                    tot += n;
+                }
+                if (tot < 12) return (false, -2);
+                uint cmd = ReadUInt32LE(resp, 0);
+                uint res = ReadUInt32LE(resp, 4);
+                uint detail = tot >= 12 ? ReadUInt32LE(resp, 8) : 0;
+                Console.Error.WriteLine($"[ALARM] resp cmd={cmd} res={res} detail={detail} len={tot}");
+                if ((cmd != 244 && cmd != 444) || res != 1001) return (false, (int)(cmd * 100000 + res));
+                Console.Error.WriteLine($"[ALARM] set {(arm ? "ON" : "OFF")} ok");
+                return (true, 256);
+            }
+            catch (Exception ex) { LogUtils.debug($"[ALARM] {ex.Message}"); return (false, -3); }
         }
 
         public string GetDeviceVersion()
