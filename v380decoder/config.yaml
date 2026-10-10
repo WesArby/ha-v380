@@ -32,4 +32,4 @@ schema:
   quality: list(hd|sd)
   enable_api: bool
   enable_onvif: bool
-image: ghcr.io/your-user/v380decoder-{arch}
+image: ghcr.io/wesarby/ha-v380-{arch}
