@@ -1,0 +1,28 @@
+{
+  "config": {
+    "title": "V380 Pro",
+    "description": "Bridge a V380 camera via its decoder proxy (RTSP, snapshot, PTZ, floodlight).",
+    "flow_title": "V380 Pro"
+  },
+  "selector": {},
+  "entity": {
+    "select": {
+      "light_mode": {
+        "name": "Floodlight mode"
+      }
+    },
+    "button": {
+      "ptz_up": { "name": "PTZ up" },
+      "ptz_down": { "name": "PTZ down" },
+      "ptz_left": { "name": "PTZ left" },
+      "ptz_right": { "name": "PTZ right" }
+    }
+  },
+  "error": {
+    "cannot_connect": "Could not reach the decoder proxy. Check host and HTTP port.",
+    "invalid_auth": "The proxy rejected the request. Check device pairing."
+  },
+  "abort": {
+    "already_configured": "This V380 proxy is already configured."
+  }
+}

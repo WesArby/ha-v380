@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect V380 decoder proxy",
+        "description": "Point this at a running camera-v380decoder instance (HTTP API port, default 8080). The camera stream, snapshots, PTZ and floodlight are all served from there.",
+        "data": {
+          "host": "Proxy host (IP or hostname)",
+          "name": "Device name",
+          "http_port": "HTTP API port",
+          "rtsp_port": "RTSP port",
+          "device_id": "Camera device ID (for reference)",
+          "username": "Camera username",
+          "password": "Camera password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the decoder proxy. Check host and HTTP port.",
+      "invalid_auth": "The proxy rejected the request. Check device pairing."
+    },
+    "abort": {
+      "already_configured": "This V380 proxy is already configured."
+    }
+  },
+  "entity": {
+    "select": {
+      "light_mode": {
+        "name": "Floodlight mode",
+        "state": {
+          "on": "On",
+          "off": "Off",
+          "auto": "Auto"
+        }
+      }
+    },
+    "button": {
+      "ptz_up": { "name": "PTZ up" },
+      "ptz_down": { "name": "PTZ down" },
+      "ptz_left": { "name": "PTZ left" },
+      "ptz_right": { "name": "PTZ right" }
+    }
+  }
+}

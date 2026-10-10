@@ -1,0 +1,10 @@
+{
+  "domain": "v380",
+  "name": "V380 Pro",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/felipemarques/camera-v380decoder",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "0.1.0"
+}
