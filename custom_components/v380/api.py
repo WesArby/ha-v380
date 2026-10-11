@@ -11,7 +11,7 @@ import asyncio
 
 import aiohttp
 
-from .const import API_LIGHT, API_PTZ, API_SNAPSHOT, API_STATUS
+from .const import API_ALARM, API_CONFIG, API_LIGHT, API_PTZ, API_SNAPSHOT, API_STATUS
 
 
 class V380Error(Exception):
