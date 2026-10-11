@@ -14,6 +14,10 @@ namespace V380Decoder.src
         public int speaker_vol { get; set; } = -1;
         public int xparam_rtsp { get; set; } = -1;
         public int xparam_vtype { get; set; } = -1;
+        public int pir { get; set; } = -1;
+        public int lamplight { get; set; } = -1;
+        public int ptz_h { get; set; } = -1;
+        public int ptz_v { get; set; } = -1;
         public string wifi { get; set; } = "";
         public string battery { get; set; } = "";
     }

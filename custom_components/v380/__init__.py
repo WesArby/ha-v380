@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
-import aiohttp
+from datetime import timedelta
+import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .api import V380Api, V380Error
 from .const import CONF_HTTP_PORT, CONF_RTSP_PORT, DEFAULT_HTTP_PORT, DEFAULT_RTSP_PORT, DOMAIN, PLATFORMS
+
+_LOGGER = logging.getLogger(__name__)
+SCAN_INTERVAL = timedelta(seconds=30)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -28,7 +33,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except V380Error as err:
         raise ConfigEntryNotReady(f"V380 proxy not ready: {err}") from err
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = api
+    async def _refresh() -> dict:
+        try:
+            return await api.async_get_status()
+        except V380Error as err:
+            _LOGGER.debug("V380 status poll failed: %s", err)
+            return {}
+
+    coordinator: DataUpdateCoordinator[dict] = DataUpdateCoordinator(
+        hass, _LOGGER, name=f"{DOMAIN} status", update_interval=SCAN_INTERVAL,
+        update_method=_refresh,
+    )
+    await coordinator.async_config_entry_first_refresh()
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "api": api,
+        "coordinator": coordinator,
+    }
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

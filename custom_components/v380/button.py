@@ -15,7 +15,7 @@ from .const import DOMAIN, PTZ_DIRECTIONS
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    api: V380Api = hass.data[DOMAIN][entry.entry_id]
+    api: V380Api = hass.data[DOMAIN][entry.entry_id]["api"]
     async_add_entities(V380PtzButton(api, entry, direction) for direction in PTZ_DIRECTIONS)
 
 

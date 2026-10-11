@@ -2,25 +2,15 @@
 
 from __future__ import annotations
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-)
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from datetime import timedelta
-import logging
-
-from .api import V380Api, V380Error
 from .const import DOMAIN
-
-_LOGGER = logging.getLogger(__name__)
-SCAN_INTERVAL = timedelta(seconds=60)
 
 POWER_SOURCES = {0: "unknown", 1: "battery", 2: "mains"}
 
@@ -28,20 +18,7 @@ POWER_SOURCES = {0: "unknown", 1: "battery", 2: "mains"}
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    api: V380Api = hass.data[DOMAIN][entry.entry_id]
-
-    async def _refresh() -> dict:
-        try:
-            return await api.async_get_status()
-        except V380Error as err:
-            _LOGGER.debug("V380 status poll failed: %s", err)
-            return {}
-
-    coordinator = DataUpdateCoordinator(
-        hass, _LOGGER, name=f"{DOMAIN} telemetry", update_interval=SCAN_INTERVAL,
-        update_method=_refresh,
-    )
-    await coordinator.async_config_entry_first_refresh()
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     async_add_entities(
         [
             V380PowerSource(coordinator, entry),

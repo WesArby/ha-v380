@@ -16,7 +16,7 @@ from .const import DOMAIN
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    api: V380Api = hass.data[DOMAIN][entry.entry_id]
+    api: V380Api = hass.data[DOMAIN][entry.entry_id]["api"]
     async_add_entities([V380Camera(api, entry)])
 
 

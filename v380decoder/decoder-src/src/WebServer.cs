@@ -125,18 +125,7 @@ namespace V380Decoder.src
                     return ok ? Results.Ok(new { applied = info }) : Results.Json(new { error = info }, statusCode: 500);
                 });
 
-                app.MapGet("/api/status", () => Results.Ok(new StatusResponse
-                {
-                    status = "running",
-                    timestamp = DateTime.Now,
-                    power_source = client.PowerSource,
-                    video_standard = client.VideoStandard,
-                    speaker_vol = client.SpeakerVol,
-                    xparam_rtsp = client.XParamRtspEnable,
-                    xparam_vtype = client.XParamVideoType,
-                    wifi = client.LastWifiHex,
-                    battery = client.LastBatteryHex
-                }));
+                app.MapGet("/api/status", () => Results.Ok(client.GetStatus()));
             }
 
             if (enableOnvif)

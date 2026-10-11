@@ -1141,12 +1141,49 @@ namespace V380Decoder.src
         {
             var st = GetXParam();
             if (st == null) return;
+            ApplyXParamSnapshot(st);
+            Console.Error.WriteLine($"[XPARAM] rtsp={XParamRtspEnable} vtype={XParamVideoType} vstd={VideoStandard} power={PowerSource} spk={SpeakerVol} pir={Pir} lamp={Lamplight} ptzh={PtzH} ptzv={PtzV}");
+        }
+
+        public int Pir { get; private set; } = -1;
+        public int Lamplight { get; private set; } = -1;
+        public int PtzH { get; private set; } = -1;
+        public int PtzV { get; private set; } = -1;
+
+        void ApplyXParamSnapshot(XParamState st)
+        {
             XParamRtspEnable = st.RtspEnable;
             XParamVideoType = st.RtspVideoType;
             VideoStandard = st.VideoStandard;
             PowerSource = st.PowerSource;
             SpeakerVol = st.SpeakerVol;
-            Console.Error.WriteLine($"[XPARAM] rtsp={XParamRtspEnable} vtype={XParamVideoType} vstd={VideoStandard} power={PowerSource} spk={SpeakerVol} pir={st.Pir} lamp={st.LightSens} ptzv={st.PtzV} ptzh={st.PtzH}");
+            Pir = st.Pir;
+            Lamplight = st.LightSens;
+            PtzH = st.PtzH;
+            PtzV = st.PtzV;
+        }
+
+        /// <summary>Live status object: fresh XParam read, cached fallback.</summary>
+        public StatusResponse GetStatus()
+        {
+            var st = GetXParam();
+            if (st != null) ApplyXParamSnapshot(st);
+            return new StatusResponse
+            {
+                status = "running",
+                timestamp = DateTime.Now,
+                power_source = PowerSource,
+                video_standard = VideoStandard,
+                speaker_vol = SpeakerVol,
+                xparam_rtsp = XParamRtspEnable,
+                xparam_vtype = XParamVideoType,
+                pir = Pir,
+                lamplight = Lamplight,
+                ptz_h = PtzH,
+                ptz_v = PtzV,
+                wifi = LastWifiHex,
+                battery = LastBatteryHex
+            };
         }
 
         /// <summary>
