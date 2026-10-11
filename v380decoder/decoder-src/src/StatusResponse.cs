@@ -18,6 +18,12 @@ namespace V380Decoder.src
         public int lamplight { get; set; } = -1;
         public int ptz_h { get; set; } = -1;
         public int ptz_v { get; set; } = -1;
+        public string fw_app { get; set; } = "";
+        public string fw_app_date { get; set; } = "";
+        public string fw_hw { get; set; } = "";
+        public string fw_hw_date { get; set; } = "";
+        public string device_time { get; set; } = "";
+        public int tz_index { get; set; } = -1;
         public string wifi { get; set; } = "";
         public string battery { get; set; } = "";
     }

@@ -17,6 +17,7 @@ API_PTZ = "/api/ptz/{direction}"
 API_LIGHT = "/api/light/{mode}"
 API_ALARM = "/api/alarm/{action}"
 API_CONFIG = "/api/config"
+API_TIME_SYNC = "/api/time/sync"
 
 LIGHT_MODES = ["on", "off", "auto"]
 PTZ_DIRECTIONS = ["up", "down", "left", "right"]

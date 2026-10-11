@@ -125,6 +125,13 @@ namespace V380Decoder.src
                     return ok ? Results.Ok(new { applied = info }) : Results.Json(new { error = info }, statusCode: 500);
                 });
 
+                app.MapPost("/api/time/sync", (HttpContext ctx) => {
+                    int? tz = int.TryParse(ctx.Request.Query["tz"], out var t) ? t : null;
+                    var (ok, info) = client.SyncTime(tz);
+                    LogUtils.debug($"[API] Time sync -> {ok} {info}");
+                    return ok ? Results.Ok(new { device_time = info }) : Results.Json(new { error = info }, statusCode: 500);
+                });
+
                 app.MapGet("/api/status", () => Results.Ok(client.GetStatus()));
             }
 

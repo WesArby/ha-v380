@@ -123,3 +123,16 @@ class V380Api:
                 return data if isinstance(data, dict) else {}
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise V380Error(f"Config {values} failed: {err}") from err
+
+    async def async_sync_time(self) -> str:
+        """Sync the camera clock to now; returns the device time set."""
+        try:
+            async with self._session.post(
+                f"{self.base_url}{API_TIME_SYNC}",
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as resp:
+                resp.raise_for_status()
+                data = await resp.json(content_type=None)
+                return str((data or {}).get("device_time", ""))
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            raise V380Error(f"Time sync failed: {err}") from err

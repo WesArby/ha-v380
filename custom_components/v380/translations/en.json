@@ -40,7 +40,8 @@
       "ptz_up": { "name": "PTZ up" },
       "ptz_down": { "name": "PTZ down" },
       "ptz_left": { "name": "PTZ left" },
-      "ptz_right": { "name": "PTZ right" }
+      "ptz_right": { "name": "PTZ right" },
+      "sync_clock": { "name": "Sync camera clock" }
     },
     "switch": {
       "alarm": { "name": "Motion alarm" }
@@ -53,7 +54,10 @@
     "sensor": {
       "power_source": { "name": "Power source" },
       "wifi_info": { "name": "WiFi info" },
-      "battery_info": { "name": "Battery info" }
+      "battery_info": { "name": "Battery info" },
+      "fw_app": { "name": "Firmware app" },
+      "fw_hw": { "name": "Firmware hardware" },
+      "device_time": { "name": "Device time" }
     }
   }
 }

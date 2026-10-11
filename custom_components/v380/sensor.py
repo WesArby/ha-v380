@@ -24,6 +24,9 @@ async def async_setup_entry(
             V380PowerSource(coordinator, entry),
             V380WifiInfo(coordinator, entry),
             V380BatteryInfo(coordinator, entry),
+            V380Text(coordinator, entry, "fw_app", "Firmware app"),
+            V380Text(coordinator, entry, "fw_hw", "Firmware hardware"),
+            V380Text(coordinator, entry, "device_time", "Device time"),
         ]
     )
 
@@ -71,4 +74,17 @@ class V380BatteryInfo(_Base):
     @property
     def native_value(self) -> str | None:
         v = (self.coordinator.data or {}).get("battery") or ""
+        return v if v else None
+
+
+class V380Text(_Base):
+    def __init__(self, coordinator, entry, key: str, _name: str) -> None:
+        super().__init__(coordinator, entry, key)
+        self._key = key
+        self._attr_unique_id = f"{entry.entry_id}_{key}"
+        self._attr_translation_key = key
+
+    @property
+    def native_value(self) -> str | None:
+        v = (self.coordinator.data or {}).get(self._key) or ""
         return v if v else None

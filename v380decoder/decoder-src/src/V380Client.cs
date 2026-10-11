@@ -38,6 +38,143 @@ namespace V380Decoder.src
         public DateTime LastWifiAt { get; private set; }
         public DateTime LastBatteryAt { get; private set; }
 
+        // Firmware + clock (cmds 319/315/316, same envelope as XParam).
+        public string FwApp { get; private set; } = "";
+        public string FwAppDate { get; private set; } = "";
+        public string FwHw { get; private set; } = "";
+        public string FwHwDate { get; private set; } = "";
+        public string DeviceTime { get; private set; } = "";
+        public int TimeZoneIndex { get; private set; } = -1;
+
+        static string ReadCString(byte[] b, int off, int max)
+        {
+            int n = 0;
+            while (n < max && off + n < b.Length && b[off + n] != 0) n++;
+            return System.Text.Encoding.ASCII.GetString(b, off, n);
+        }
+
+        public void FetchVersion()
+        {
+            try
+            {
+                using var c = new TcpClient();
+                var r = c.BeginConnect(ip, port, null, null);
+                if (!r.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(4))) return;
+                c.EndConnect(r);
+                using var s = c.GetStream();
+                var req = new byte[256];
+                WriteUInt32LE(req, 0, 319);
+                WriteUInt32LE(req, 4, deviceId);
+                req[8] = 1;
+                WriteUInt32LE(req, 9, authTicket);
+                s.Write(req, 0, req.Length);
+                s.Flush();
+                var resp = new byte[256];
+                int tot = 0;
+                var dl = DateTime.Now.AddSeconds(8);
+                while (tot < 256 && DateTime.Now < dl)
+                {
+                    if (!s.DataAvailable) { Thread.Sleep(50); continue; }
+                    int n = s.Read(resp, tot, 256 - tot);
+                    if (n <= 0) break;
+                    tot += n;
+                }
+                if (tot < 150) return;
+                if (ReadUInt32LE(resp, 0) != 419 || ReadUInt32LE(resp, 4) != 1001) return;
+                FwApp = ReadCString(resp, 9, 32);
+                FwAppDate = ReadCString(resp, 41, 10);
+                FwHw = ReadCString(resp, 93, 32);
+                FwHwDate = ReadCString(resp, 125, 10);
+                Console.Error.WriteLine($"[VERSION] app={FwApp} hw={FwHw}");
+            }
+            catch (Exception ex) { LogUtils.debug($"[VERSION] {ex.Message}"); }
+        }
+
+        public void FetchTime()
+        {
+            try
+            {
+                using var c = new TcpClient();
+                var r = c.BeginConnect(ip, port, null, null);
+                if (!r.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(4))) return;
+                c.EndConnect(r);
+                using var s = c.GetStream();
+                var req = new byte[256];
+                WriteUInt32LE(req, 0, 315);
+                WriteUInt32LE(req, 4, deviceId);
+                req[8] = 1;
+                WriteUInt32LE(req, 9, authTicket);
+                s.Write(req, 0, req.Length);
+                s.Flush();
+                var resp = new byte[256];
+                int tot = 0;
+                var dl = DateTime.Now.AddSeconds(8);
+                while (tot < 256 && DateTime.Now < dl)
+                {
+                    if (!s.DataAvailable) { Thread.Sleep(50); continue; }
+                    int n = s.Read(resp, tot, 256 - tot);
+                    if (n <= 0) break;
+                    tot += n;
+                }
+                if (tot < 54) return;
+                if (ReadUInt32LE(resp, 0) != 415 || ReadUInt32LE(resp, 4) != 1001) return;
+                TimeType = (int)ReadUInt32LE(resp, 9);
+                DeviceTime = ReadCString(resp, 13, 32);
+                TimeZoneIndex = (int)ReadUInt32LE(resp, 45);
+                TimeZoneEnabled = resp.Length > 49 && resp[49] == 1;
+                Console.Error.WriteLine($"[TIME] dev={DeviceTime} tz={TimeZoneIndex}");
+            }
+            catch (Exception ex) { LogUtils.debug($"[TIME] {ex.Message}"); }
+        }
+
+        int TimeType = 0;
+        bool TimeZoneEnabled = false;
+
+        /// <summary>Sync camera clock to now, preserving its type/TZ.</summary>
+        public (bool ok, string info) SyncTime(int? tzOverride = null)
+        {
+            try
+            {
+                FetchTime();
+                int tz = tzOverride ?? TimeZoneIndex;
+                var req = new byte[256];
+                using var c = new TcpClient();
+                var r = c.BeginConnect(ip, port, null, null);
+                if (!r.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(5))) return (false, "connect");
+                c.EndConnect(r);
+                using var s = c.GetStream();
+                WriteUInt32LE(req, 0, 316);
+                WriteUInt32LE(req, 4, deviceId);
+                req[8] = 1;
+                WriteUInt32LE(req, 9, authTicket);
+                WriteUInt32LE(req, 13, (uint)TimeType);
+                var tb = System.Text.Encoding.ASCII.GetBytes(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                Array.Copy(tb, 0, req, 17, Math.Min(tb.Length, 32));
+                // tz index is signed (e.g. -5); round-trip it exactly, never clamp.
+                WriteUInt32LE(req, 49, unchecked((uint)tz));
+                req[53] = (byte)(TimeZoneEnabled ? 1 : 0);
+                s.Write(req, 0, req.Length);
+                s.Flush();
+                var resp = new byte[32];
+                int tot = 0;
+                var dl = DateTime.Now.AddSeconds(8);
+                while (tot < 32 && DateTime.Now < dl)
+                {
+                    if (!s.DataAvailable) { Thread.Sleep(50); continue; }
+                    int n = s.Read(resp, tot, 32 - tot);
+                    if (n <= 0) break;
+                    tot += n;
+                }
+                if (tot < 12) return (false, "short-read");
+                uint cmd = ReadUInt32LE(resp, 0), res = ReadUInt32LE(resp, 4);
+                Console.Error.WriteLine($"[TIME] set cmd={cmd} res={res}");
+                if (cmd != 416 || res != 1001) return (false, $"cmd={cmd} res={res}");
+                FetchTime();
+                return (true, DeviceTime);
+            }
+            catch (Exception ex) { LogUtils.debug($"[TIME] {ex.Message}"); return (false, "exception"); }
+        }
+
         private sealed class FragAssembly
         {
             public readonly List<byte> Frags = new List<byte>();
@@ -74,6 +211,8 @@ namespace V380Decoder.src
                     if (auth == -1) break;
 
                     try { FetchDeviceParams(); } catch { }
+                    try { FetchVersion(); } catch { }
+                    try { FetchTime(); } catch { }
 
                     if (!StreamLogin())
                     {
@@ -1181,6 +1320,12 @@ namespace V380Decoder.src
                 lamplight = Lamplight,
                 ptz_h = PtzH,
                 ptz_v = PtzV,
+                fw_app = FwApp,
+                fw_app_date = FwAppDate,
+                fw_hw = FwHw,
+                fw_hw_date = FwHwDate,
+                device_time = DeviceTime,
+                tz_index = TimeZoneIndex,
                 wifi = LastWifiHex,
                 battery = LastBatteryHex
             };
