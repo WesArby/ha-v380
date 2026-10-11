@@ -32,7 +32,9 @@
           "off": "Off",
           "auto": "Auto"
         }
-      }
+      },
+      "pir": { "name": "PIR sensitivity" },
+      "lamplight": { "name": "Lamplight sensitivity" }
     },
     "button": {
       "ptz_up": { "name": "PTZ up" },
@@ -42,6 +44,11 @@
     },
     "switch": {
       "alarm": { "name": "Motion alarm" }
+    },
+    "number": {
+      "speaker_vol": { "name": "Device volume" },
+      "ptz_h": { "name": "PTZ horizontal speed" },
+      "ptz_v": { "name": "PTZ vertical speed" }
     },
     "sensor": {
       "power_source": { "name": "Power source" },

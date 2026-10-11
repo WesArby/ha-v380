@@ -1034,14 +1034,84 @@ namespace V380Decoder.src
             return deviceId.ToString();
         }
 
+        /// <summary>
+        /// Full XParam struct: parsed from a GET (cmd 347) response, serialized
+        /// to a SET (cmd 348) request. Layouts mirror the decompiled
+        /// getDeviceParam/setDeviceParam (response and request differ by a
+        /// 4-byte shift plus a modelId region present only in responses).
+        /// </summary>
+        public sealed class XParamState
+        {
+            public int Pir, LightVal, LightTime, PhotoSens, LightSens;
+            public int ResetEnable, RtspEnable, SmokeSens, RtspVideoType;
+            public int Osd, Indicator, Led, PtzV, PtzH, VideoStandard, PowerSource;
+            public int SpeakerVol, PowerMode, TimerCount, LogUpload, Hdr;
+            public byte[] PowerTimers = Array.Empty<byte>();
+
+            public static XParamState? FromGetResponse(byte[] r)
+            {
+                if (r.Length < 96) return null;
+                if (ReadU32(r, 0) != 447 || ReadU32(r, 4) != 1001) return null;
+                var s = new XParamState
+                {
+                    Pir = r[9], LightVal = r[10], LightTime = r[11] | (r[12] << 8),
+                    PhotoSens = r[13], LightSens = r[14],
+                    ResetEnable = r[16], RtspEnable = r[17], SmokeSens = r[18],
+                    RtspVideoType = r[19], Osd = r[20], Indicator = r[21], Led = r[22],
+                    PtzV = r[23], PtzH = r[24], VideoStandard = r[25], PowerSource = r[26],
+                    SpeakerVol = r[30],
+                    TimerCount = r[74],
+                    LogUpload = r[76], Hdr = r[79],
+                };
+                s.PowerMode = (r[72] & 31) | ((r[77] & 31) << 5) | ((r[72] & 224) << 19) | ((r[77] & 224) << 22);
+                int n = Math.Min(s.TimerCount, 8);
+                if (n > 0 && 75 + n * 6 <= r.Length)
+                {
+                    s.PowerTimers = new byte[n * 6];
+                    Array.Copy(r, 75, s.PowerTimers, 0, n * 6);
+                }
+                return s;
+            }
+
+            public byte[] ToSetRequest(uint devId, uint ticket)
+            {
+                var b = new byte[256];
+                WriteU32(b, 0, 348);
+                WriteU32(b, 4, devId);
+                b[8] = 1;
+                WriteU32(b, 9, ticket);
+                b[13] = (byte)Pir; b[14] = (byte)LightVal;
+                b[15] = (byte)(LightTime & 255); b[16] = (byte)((LightTime >> 8) & 255);
+                b[17] = (byte)PhotoSens; b[18] = (byte)LightSens;
+                b[20] = (byte)ResetEnable; b[21] = (byte)RtspEnable; b[22] = (byte)SmokeSens;
+                b[23] = (byte)RtspVideoType; b[24] = (byte)Osd; b[25] = (byte)Indicator;
+                b[26] = (byte)Led; b[27] = (byte)PtzV; b[28] = (byte)PtzH;
+                b[29] = (byte)VideoStandard; b[30] = (byte)PowerSource;
+                b[34] = (byte)SpeakerVol;
+                b[35] = (byte)((PowerMode & 31) | ((PowerMode & 117440512) >> 19));
+                int n = PowerTimers.Length / 6;
+                b[36] = (byte)n;
+                if (n > 0) Array.Copy(PowerTimers, 0, b, 37, n * 6);
+                int i3 = 36 + n * 6;
+                b[i3 + 2] = (byte)LogUpload;
+                b[i3 + 3] = (byte)(((PowerMode & 992) >> 5) | ((PowerMode & 939524096) >> 22));
+                b[i3 + 5] = (byte)Hdr;
+                b[i3 + 7] = 0; // detection: absent from LAN GET; app sends struct default
+                return b;
+            }
+
+            static void WriteU32(byte[] b, int o, uint v) { b[o] = (byte)v; b[o + 1] = (byte)(v >> 8); b[o + 2] = (byte)(v >> 16); b[o + 3] = (byte)(v >> 24); }
+            static uint ReadU32(byte[] b, int o) => (uint)(b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24));
+        }
+
         /// <summary>Best-effort XParam read (cmd 347) for power/video settings.</summary>
-        public void FetchDeviceParams()
+        public XParamState? GetXParam()
         {
             try
             {
                 using var c = new TcpClient();
                 var r = c.BeginConnect(ip, port, null, null);
-                if (!r.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(4))) return;
+                if (!r.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(4))) return null;
                 c.EndConnect(r);
                 using var s = c.GetStream();
                 var req = new byte[256];
@@ -1061,16 +1131,96 @@ namespace V380Decoder.src
                     if (n <= 0) break;
                     tot += n;
                 }
-                if (tot < 32) return;
-                if (ReadUInt32LE(resp, 0) != 447 || ReadUInt32LE(resp, 4) != 1001) return;
-                XParamRtspEnable = resp[17];
-                XParamVideoType = resp[19];
-                VideoStandard = resp[25];
-                PowerSource = resp[26];
-                SpeakerVol = resp[30];
-                Console.Error.WriteLine($"[XPARAM] rtsp={XParamRtspEnable} vtype={XParamVideoType} vstd={VideoStandard} power={PowerSource} spk={SpeakerVol}");
+                if (tot < 96) return null;
+                return XParamState.FromGetResponse(resp);
             }
-            catch (Exception ex) { LogUtils.debug($"[XPARAM] {ex.Message}"); }
+            catch (Exception ex) { LogUtils.debug($"[XPARAM] {ex.Message}"); return null; }
+        }
+
+        public void FetchDeviceParams()
+        {
+            var st = GetXParam();
+            if (st == null) return;
+            XParamRtspEnable = st.RtspEnable;
+            XParamVideoType = st.RtspVideoType;
+            VideoStandard = st.VideoStandard;
+            PowerSource = st.PowerSource;
+            SpeakerVol = st.SpeakerVol;
+            Console.Error.WriteLine($"[XPARAM] rtsp={XParamRtspEnable} vtype={XParamVideoType} vstd={VideoStandard} power={PowerSource} spk={SpeakerVol} pir={st.Pir} lamp={st.LightSens} ptzv={st.PtzV} ptzh={st.PtzH}");
+        }
+
+        /// <summary>
+        /// Batch-1 settings writer. Read-modify-write of the full XParam
+        /// struct; only the requested keys change. Supported keys:
+        /// speaker_vol 0..100, pir/low|medium|high, lamplight/low|medium|high,
+        /// ptz_h 1..9, ptz_v 1..9. Returns (ok, applied|error).
+        /// </summary>
+        public (bool ok, string info) ApplySettings(System.Collections.Generic.Dictionary<string, string> kv)
+        {
+            try
+            {
+                var st = GetXParam();
+                if (st == null) return (false, "get-failed");
+                var applied = new System.Collections.Generic.List<string>();
+                foreach (var (k, v) in kv)
+                {
+                    switch (k.ToLowerInvariant())
+                    {
+                        case "speaker_vol":
+                            if (int.TryParse(v, out int sp) && sp >= 0 && sp <= 100) { st.SpeakerVol = sp; applied.Add($"speaker_vol={sp}"); }
+                            else return (false, "speaker_vol range 0..100");
+                            break;
+                        case "pir":
+                            if (TryLevel(v, out int pir)) { st.Pir = pir; applied.Add($"pir={v}({pir})"); }
+                            else return (false, "pir low|medium|high");
+                            break;
+                        case "lamplight":
+                            if (TryLevel(v, out int lamp)) { st.LightSens = lamp; applied.Add($"lamplight={v}({lamp})"); }
+                            else return (false, "lamplight low|medium|high");
+                            break;
+                        case "ptz_h":
+                            if (int.TryParse(v, out int ph) && ph >= 1 && ph <= 9) { st.PtzH = ph; applied.Add($"ptz_h={ph}"); }
+                            else return (false, "ptz_h range 1..9");
+                            break;
+                        case "ptz_v":
+                            if (int.TryParse(v, out int pv) && pv >= 1 && pv <= 9) { st.PtzV = pv; applied.Add($"ptz_v={pv}"); }
+                            else return (false, "ptz_v range 1..9");
+                            break;
+                        default: return (false, $"unknown key {k}");
+                    }
+                }
+                using var c = new TcpClient();
+                var r = c.BeginConnect(ip, port, null, null);
+                if (!r.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(5))) return (false, "connect");
+                c.EndConnect(r);
+                using var s = c.GetStream();
+                var req = st.ToSetRequest(deviceId, authTicket);
+                s.Write(req, 0, req.Length);
+                s.Flush();
+                var resp = new byte[32];
+                int tot = 0;
+                var dl = DateTime.Now.AddSeconds(8);
+                while (tot < 32 && DateTime.Now < dl)
+                {
+                    if (!s.DataAvailable) { Thread.Sleep(50); continue; }
+                    int n = s.Read(resp, tot, 32 - tot);
+                    if (n <= 0) break;
+                    tot += n;
+                }
+                if (tot < 12) return (false, "short-read");
+                uint cmd = ReadUInt32LE(resp, 0), res = ReadUInt32LE(resp, 4);
+                Console.Error.WriteLine($"[CONFIG] set cmd={cmd} res={res} {string.Join(",", applied)}");
+                if (cmd != 448 || res != 1001) return (false, $"cmd={cmd} res={res}");
+                FetchDeviceParams();
+                return (true, string.Join(",", applied));
+            }
+            catch (Exception ex) { LogUtils.debug($"[CONFIG] {ex.Message}"); return (false, "exception"); }
+        }
+
+        static bool TryLevel(string v, out int n)
+        {
+            n = v.ToLowerInvariant() switch { "low" => 1, "medium" => 2, "high" => 3, _ => -1 };
+            return n > 0;
         }
 
         /// <summary>
@@ -1110,9 +1260,8 @@ namespace V380Decoder.src
                 if (tot < 12) return (false, -2);
                 uint cmd = ReadUInt32LE(resp, 0);
                 uint res = ReadUInt32LE(resp, 4);
-                uint detail = tot >= 12 ? ReadUInt32LE(resp, 8) : 0;
-                Console.Error.WriteLine($"[ALARM] resp cmd={cmd} res={res} detail={detail} len={tot}");
-                if ((cmd != 244 && cmd != 444) || res != 1001) return (false, (int)(cmd * 100000 + res));
+                if (cmd != 244) return (false, (int)cmd);
+                if (res != 1001) return (false, (int)ReadUInt32LE(resp, 8));
                 Console.Error.WriteLine($"[ALARM] set {(arm ? "ON" : "OFF")} ok");
                 return (true, 256);
             }

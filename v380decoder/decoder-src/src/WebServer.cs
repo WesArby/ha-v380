@@ -119,6 +119,12 @@ namespace V380Decoder.src
                 app.MapPost("/api/alarm/on", () => { var (ok, code) = client.SetAlarm(true); LogUtils.debug($"[API] Alarm On -> {code}"); return ok ? Results.Ok(new { result = code }) : Results.Json(new { result = code }, statusCode: 500); });
                 app.MapPost("/api/alarm/off", () => { var (ok, code) = client.SetAlarm(false); LogUtils.debug($"[API] Alarm Off -> {code}"); return ok ? Results.Ok(new { result = code }) : Results.Json(new { result = code }, statusCode: 500); });
 
+                app.MapPost("/api/config", (System.Collections.Generic.Dictionary<string, string> kv) => {
+                    var (ok, info) = client.ApplySettings(kv ?? new System.Collections.Generic.Dictionary<string, string>());
+                    LogUtils.debug($"[API] Config -> {ok} {info}");
+                    return ok ? Results.Ok(new { applied = info }) : Results.Json(new { error = info }, statusCode: 500);
+                });
+
                 app.MapGet("/api/status", () => Results.Ok(new StatusResponse
                 {
                     status = "running",

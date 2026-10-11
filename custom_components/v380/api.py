@@ -108,3 +108,18 @@ class V380Api:
                 resp.raise_for_status()
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise V380Error(f"Alarm {action} failed: {err}") from err
+
+    async def async_set_config(self, values: dict) -> dict:
+        """Write batch-1 settings; keys: speaker_vol, pir, lamplight,
+        ptz_h, ptz_v. Returns the applied mapping."""
+        try:
+            async with self._session.post(
+                f"{self.base_url}{API_CONFIG}",
+                json=values,
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as resp:
+                resp.raise_for_status()
+                data = await resp.json(content_type=None)
+                return data if isinstance(data, dict) else {}
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            raise V380Error(f"Config {values} failed: {err}") from err
