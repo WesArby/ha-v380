@@ -18,7 +18,7 @@ namespace V380Decoder.src
         private byte[] cachedSps;
         private byte[] cachedPps;
         private byte[] cachedVps;
-        private string cachedAudioConfig = "1210"; // AAC-LC 8kHz mono fallback
+        private string cachedAudioConfig = "1588"; // AAC-LC 8kHz mono (verified); replaced live per ADTS
         private VideoCodec streamCodec = VideoCodec.Unknown;
         private readonly object sdpLock = new();
 
