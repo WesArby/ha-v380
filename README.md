@@ -1,5 +1,4 @@
 # V380 Pro for Home Assistant (custom integration)
-
 Bridges a V380 / V380 Pro Wi-Fi camera into Home Assistant through a
 running [camera-v380decoder](https://github.com/felipemarques/camera-v380decoder)
 proxy. The proxy speaks the proprietary V380 LAN protocol to the camera
@@ -60,3 +59,25 @@ LAN IP. One instance per camera.
 - Frame rate is firmware-fixed (~12fps HD on tested hardware); for a
   smoother/cheaper feed use the proxy's `--quality sd`.
 - Credentials live in the config entry (local-only integration).
+
+## Releasing (version numbers)
+
+Both consumers key off versions, so they move together:
+
+- `custom_components/v380/manifest.json` → `version` (what HACS shows)
+- `v380decoder/config.yaml` → `version` (what triggers Supervisor add-on updates)
+
+To cut a release (example `0.3.0`):
+
+```bash
+# 1. bump both version fields, commit
+# 2. tag + push
+git tag -a v0.3.0 -m "Batch 2: ..."
+git push origin main --tags
+# 3. GitHub → Releases → Draft a new release from the tag
+```
+
+HACS picks up the new manifest version; Supervisor offers the add-on
+update on next store refresh. Never push a version bump without the
+matching code — a Supervisor update prompt with no changes trains
+users to ignore updates.
