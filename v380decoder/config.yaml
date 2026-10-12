@@ -27,7 +27,7 @@ schema:
   device_id: int
   username: str
   password: password
-  camera_ip: ipv4
+  camera_ip: str
   camera_port: port
   quality: list(hd|sd)
   enable_api: bool
