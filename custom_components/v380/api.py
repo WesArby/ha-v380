@@ -136,3 +136,17 @@ class V380Api:
                 return str((data or {}).get("device_time", ""))
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise V380Error(f"Time sync failed: {err}") from err
+
+    async def async_set_pir_wake(self, time_s: int, interval_s: int) -> str:
+        """Set PIR wake duration/interval (seconds)."""
+        try:
+            async with self._session.post(
+                f"{self.base_url}{API_PIR_WAKE}",
+                json={"time": str(time_s), "interval": str(interval_s)},
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as resp:
+                resp.raise_for_status()
+                data = await resp.json(content_type=None)
+                return str((data or {}).get("applied", ""))
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            raise V380Error(f"PIR wake set failed: {err}") from err

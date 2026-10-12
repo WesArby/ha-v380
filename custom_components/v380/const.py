@@ -18,6 +18,7 @@ API_LIGHT = "/api/light/{mode}"
 API_ALARM = "/api/alarm/{action}"
 API_CONFIG = "/api/config"
 API_TIME_SYNC = "/api/time/sync"
+API_PIR_WAKE = "/api/pir/wake"
 
 LIGHT_MODES = ["on", "off", "auto"]
 PTZ_DIRECTIONS = ["up", "down", "left", "right"]

@@ -12,7 +12,9 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 
-POWER_SOURCES = {0: "unknown", 1: "battery", 2: "mains"}
+POWER_SOURCES = {0: "unknown", 1: "battery", 2: "solar"}
+# NOTE: mapping inferred from a single solar+battery unit reporting 2.
+# Unverified for other models; raw value also logged in attributes.
 
 
 async def async_setup_entry(

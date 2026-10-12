@@ -25,6 +25,8 @@ async def async_setup_entry(
             V380Number(api, coordinator, entry, "speaker_vol", 0, 100),
             V380Number(api, coordinator, entry, "ptz_h", 1, 9),
             V380Number(api, coordinator, entry, "ptz_v", 1, 9),
+            V380PirWakeNumber(api, coordinator, entry, "pir_wake_time", 1, 3600),
+            V380PirWakeNumber(api, coordinator, entry, "pir_wake_interval", 1, 3600),
         ]
     )
 
@@ -56,4 +58,42 @@ class V380Number(CoordinatorEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         await self._api.async_set_config({self._key: str(int(value))})
+        await self.coordinator.async_request_refresh()
+
+
+class V380PirWakeNumber(CoordinatorEntity, NumberEntity):
+    """PIR wake duration / interval in seconds (device-validated)."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_mode = NumberMode.SLIDER
+    _attr_native_unit_of_measurement = "s"
+
+    def __init__(
+        self, api: V380Api, coordinator: DataUpdateCoordinator[dict],
+        entry: ConfigEntry, key: str, minimum: float, maximum: float,
+    ) -> None:
+        super().__init__(coordinator)
+        self._api = api
+        self._key = key
+        self._attr_unique_id = f"{entry.entry_id}_{key}"
+        self._attr_translation_key = key
+        self._attr_native_min_value = minimum
+        self._attr_native_max_value = maximum
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, entry.entry_id)})
+
+    @property
+    def native_value(self) -> float | None:
+        v = (self.coordinator.data or {}).get(self._key, -1)
+        return None if v is None or v < 0 else float(v)
+
+    async def async_set_native_value(self, value: float) -> None:
+        data = self.coordinator.data or {}
+        time_s = int(data.get("pir_wake_time", 0) or 0)
+        interval_s = int(data.get("pir_wake_interval", 0) or 0)
+        if self._key == "pir_wake_time":
+            time_s = int(value)
+        else:
+            interval_s = int(value)
+        await self._api.async_set_pir_wake(time_s, interval_s)
         await self.coordinator.async_request_refresh()

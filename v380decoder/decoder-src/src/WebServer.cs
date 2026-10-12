@@ -132,6 +132,21 @@ namespace V380Decoder.src
                     return ok ? Results.Ok(new { device_time = info }) : Results.Json(new { error = info }, statusCode: 500);
                 });
 
+                app.MapGet("/api/pir/wake", () => {
+                    bool ok = client.FetchPirWake();
+                    return ok ? Results.Ok(new { time = client.PirWakeTime, interval = client.PirWakeInterval })
+                              : Results.Json(new { error = "read-failed" }, statusCode: 500);
+                });
+
+                app.MapPost("/api/pir/wake", (System.Collections.Generic.Dictionary<string, string> kv) => {
+                    if (kv == null || !kv.TryGetValue("time", out var ts) || !kv.TryGetValue("interval", out var iv)
+                        || !int.TryParse(ts, out int timeS) || !int.TryParse(iv, out int intervalS))
+                        return Results.Json(new { error = "need {time, interval} seconds" }, statusCode: 400);
+                    var (ok, info) = client.SetPirWake(timeS, intervalS);
+                    LogUtils.debug($"[API] PIR wake -> {ok} {info}");
+                    return ok ? Results.Ok(new { applied = info }) : Results.Json(new { error = info }, statusCode: 500);
+                });
+
                 app.MapGet("/api/status", () => Results.Ok(client.GetStatus()));
             }
 

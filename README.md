@@ -73,6 +73,8 @@ Reverse-engineered and ruled out on `AppKN_VACL3` / `Hw_HsAkQQNC` firmware:
   app streaming: only `8800`/`9800` open.
 - **Two-way talk, cloud events/AI insights, SD-card playback UI** —
   uplink/cloud protocols, out of scope for a LAN integration.
+- **PIR wake schedule (704/705)** — probed live: camera answers `-100`
+  (command not supported). PIR timing is cloud/DPID-only on this firmware.
 - **Reset camera / password change** — skipped on purpose (footguns).
 
 ## Releasing (version numbers)

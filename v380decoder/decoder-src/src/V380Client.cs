@@ -46,6 +46,130 @@ namespace V380Decoder.src
         public string DeviceTime { get; private set; } = "";
         public int TimeZoneIndex { get; private set; } = -1;
 
+        // PIR wake schedule (cmds 704/705, int16 fields; Lan variant).
+        public int PirWakeTime { get; private set; } = -1;
+        public int PirWakeInterval { get; private set; } = -1;
+
+        public bool FetchPirWake()
+        {
+            try
+            {
+                using var c = new TcpClient();
+                var r = c.BeginConnect(ip, port, null, null);
+                if (!r.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(4))) return false;
+                c.EndConnect(r);
+                using var s = c.GetStream();
+                var req = new byte[256];
+                WriteUInt32LE(req, 0, 704);
+                WriteUInt32LE(req, 4, deviceId);
+                req[8] = 1;
+                WriteUInt32LE(req, 9, authTicket);
+                s.Write(req, 0, req.Length);
+                s.Flush();
+                var resp = new byte[256];
+                int tot = 0;
+                var dl = DateTime.Now.AddSeconds(8);
+                while (tot < 256 && DateTime.Now < dl)
+                {
+                    if (!s.DataAvailable) { Thread.Sleep(50); continue; }
+                    int n = s.Read(resp, tot, 256 - tot);
+                    if (n <= 0) break;
+                    tot += n;
+                }
+                if (tot < 24) { Console.Error.WriteLine($"[PIRWAKE] short len={tot}"); return false; }
+                uint cmd = ReadUInt32LE(resp, 0), res = ReadUInt32LE(resp, 4);
+                Console.Error.WriteLine($"[PIRWAKE] resp cmd={cmd} res={res} len={tot}");
+                if (cmd != 804 || res != 1001) return false;
+                PirWakeTime = ReadUInt16LE(resp, 13);
+                PirWakeInterval = ReadUInt16LE(resp, 19);
+                Console.Error.WriteLine($"[PIRWAKE] time={PirWakeTime}s interval={PirWakeInterval}s");
+                return true;
+            }
+            catch (Exception ex) { LogUtils.debug($"[PIRWAKE] {ex.Message}"); return false; }
+        }
+
+        /// <summary>Set PIR wake time/interval (seconds), preserving device min/max.</summary>
+        public (bool ok, string info) SetPirWake(int timeS, int intervalS)
+        {
+            try
+            {
+                // read current first (preserves min/max + interval bounds)
+                int tMin = 1, tMax = 3600, iMin = 1, iMax = 3600;
+                using (var c = new TcpClient())
+                {
+                    var r = c.BeginConnect(ip, port, null, null);
+                    if (!r.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(4))) return (false, "connect");
+                    c.EndConnect(r);
+                    using var s = c.GetStream();
+                    var req = new byte[256];
+                    WriteUInt32LE(req, 0, 704);
+                    WriteUInt32LE(req, 4, deviceId);
+                    req[8] = 1;
+                    WriteUInt32LE(req, 9, authTicket);
+                    s.Write(req, 0, req.Length);
+                    s.Flush();
+                    var resp = new byte[256];
+                    int tot = 0;
+                    var dl = DateTime.Now.AddSeconds(8);
+                    while (tot < 256 && DateTime.Now < dl)
+                    {
+                        if (!s.DataAvailable) { Thread.Sleep(50); continue; }
+                        int n = s.Read(resp, tot, 256 - tot);
+                        if (n <= 0) break;
+                        tot += n;
+                    }
+                    if (tot < 24 || ReadUInt32LE(resp, 0) != 804 || ReadUInt32LE(resp, 4) != 1001)
+                        return (false, "get-failed");
+                    tMin = ReadUInt16LE(resp, 9); if (tMin < 1) tMin = 1;
+                    tMax = ReadUInt16LE(resp, 11); if (tMax < tMin) tMax = 3600;
+                    iMin = ReadUInt16LE(resp, 15); if (iMin < 1) iMin = 1;
+                    iMax = ReadUInt16LE(resp, 17); if (iMax < iMin) iMax = 3600;
+                }
+                if (timeS < tMin || timeS > tMax) return (false, $"time range {tMin}..{tMax}");
+                if (intervalS < iMin || intervalS > iMax) return (false, $"interval range {iMin}..{iMax}");
+                using (var c = new TcpClient())
+                {
+                    var r = c.BeginConnect(ip, port, null, null);
+                    if (!r.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(5))) return (false, "connect");
+                    c.EndConnect(r);
+                    using var s = c.GetStream();
+                    var req = new byte[412];
+                    Array.Clear(req, 0, req.Length);
+                    WriteUInt32LE(req, 0, 705);
+                    WriteUInt32LE(req, 4, deviceId);
+                    req[8] = 1;
+                    WriteUInt32LE(req, 9, authTicket);
+                    WriteU16(req, 13, (ushort)tMin);
+                    WriteU16(req, 15, (ushort)tMax);
+                    WriteU16(req, 17, (ushort)timeS);
+                    WriteU16(req, 19, (ushort)iMin);
+                    WriteU16(req, 21, (ushort)iMax);
+                    WriteU16(req, 23, (ushort)intervalS);
+                    s.Write(req, 0, req.Length);
+                    s.Flush();
+                    var resp = new byte[32];
+                    int tot = 0;
+                    var dl = DateTime.Now.AddSeconds(8);
+                    while (tot < 32 && DateTime.Now < dl)
+                    {
+                        if (!s.DataAvailable) { Thread.Sleep(50); continue; }
+                        int n = s.Read(resp, tot, 32 - tot);
+                        if (n <= 0) break;
+                        tot += n;
+                    }
+                    if (tot < 12) return (false, "short-read");
+                    uint cmd = ReadUInt32LE(resp, 0), res = ReadUInt32LE(resp, 4);
+                    Console.Error.WriteLine($"[PIRWAKE] set cmd={cmd} res={res} time={timeS} interval={intervalS}");
+                    if ((cmd != 805 && cmd != 705) || res != 1001) return (false, $"cmd={cmd} res={res}");
+                    FetchPirWake();
+                    return (true, $"time={PirWakeTime} interval={PirWakeInterval}");
+                }
+            }
+            catch (Exception ex) { LogUtils.debug($"[PIRWAKE] {ex.Message}"); return (false, "exception"); }
+        }
+
+        static void WriteU16(byte[] b, int o, ushort v) { b[o] = (byte)v; b[o + 1] = (byte)(v >> 8); }
+
         static string ReadCString(byte[] b, int off, int max)
         {
             int n = 0;
@@ -213,6 +337,7 @@ namespace V380Decoder.src
                     try { FetchDeviceParams(); } catch { }
                     try { FetchVersion(); } catch { }
                     try { FetchTime(); } catch { }
+                    try { FetchPirWake(); } catch { }
 
                     if (!StreamLogin())
                     {
@@ -1326,6 +1451,8 @@ namespace V380Decoder.src
                 fw_hw_date = FwHwDate,
                 device_time = DeviceTime,
                 tz_index = TimeZoneIndex,
+                pir_wake_time = PirWakeTime,
+                pir_wake_interval = PirWakeInterval,
                 wifi = LastWifiHex,
                 battery = LastBatteryHex
             };

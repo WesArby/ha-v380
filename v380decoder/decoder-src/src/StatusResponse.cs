@@ -24,6 +24,8 @@ namespace V380Decoder.src
         public string fw_hw_date { get; set; } = "";
         public string device_time { get; set; } = "";
         public int tz_index { get; set; } = -1;
+        public int pir_wake_time { get; set; } = -1;
+        public int pir_wake_interval { get; set; } = -1;
         public string wifi { get; set; } = "";
         public string battery { get; set; } = "";
     }
