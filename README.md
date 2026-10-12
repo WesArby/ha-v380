@@ -60,6 +60,21 @@ LAN IP. One instance per camera.
   smoother/cheaper feed use the proxy's `--quality sd`.
 - Credentials live in the config entry (local-only integration).
 
+## Deliberately out of reach (verified)
+
+Reverse-engineered and ruled out on `AppKN_VACL3` / `Hw_HsAkQQNC` firmware:
+
+- **Native RTSP/ONVIF on the camera** — ports closed; `ceshi.ini` ignored;
+  `XParam SET` accepted-but-dropped; no server binary to enable.
+- **Alarm arm, reboot, presets, motion track, linkage** — no LAN path
+  exists. Legacy binary commands are refused (`1018`), and the
+  new-platform DPID/DAID plane rides MQTT/cloud relay (port `8089`
+  never listens, even mid-stream). Verified by port scan during active
+  app streaming: only `8800`/`9800` open.
+- **Two-way talk, cloud events/AI insights, SD-card playback UI** —
+  uplink/cloud protocols, out of scope for a LAN integration.
+- **Reset camera / password change** — skipped on purpose (footguns).
+
 ## Releasing (version numbers)
 
 Both consumers key off versions, so they move together:
