@@ -4,16 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-import aiohttp
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
-from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import CONF_HOST, CONF_NAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import V380Api, V380AuthError, V380Error
 from .const import (
-    CONF_DEVICE_ID,
     CONF_HTTP_PORT,
     CONF_RTSP_PORT,
     DEFAULT_HTTP_PORT,
@@ -60,9 +58,6 @@ class V380ConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_NAME, default="V380 Camera"): str,
                 vol.Optional(CONF_HTTP_PORT, default=DEFAULT_HTTP_PORT): int,
                 vol.Optional(CONF_RTSP_PORT, default=DEFAULT_RTSP_PORT): int,
-                vol.Optional(CONF_DEVICE_ID, default=""): str,
-                vol.Optional(CONF_USERNAME, default="admin"): str,
-                vol.Optional(CONF_PASSWORD, default=""): str,
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)

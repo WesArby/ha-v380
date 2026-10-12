@@ -26,14 +26,11 @@
     "number": {
       "speaker_vol": { "name": "Device volume" },
       "ptz_h": { "name": "PTZ horizontal speed" },
-      "ptz_v": { "name": "PTZ vertical speed" },
-      "pir_wake_time": { "name": "PIR wake duration" },
-      "pir_wake_interval": { "name": "PIR wake interval" }
+      "ptz_v": { "name": "PTZ vertical speed" }
     },
     "sensor": {
       "power_source": { "name": "Power source" },
       "wifi_info": { "name": "WiFi info" },
-      "battery_info": { "name": "Battery info" },
       "fw_app": { "name": "Firmware app" },
       "fw_hw": { "name": "Firmware hardware" },
       "device_time": { "name": "Device time" }

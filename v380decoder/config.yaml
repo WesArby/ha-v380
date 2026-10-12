@@ -1,5 +1,5 @@
 name: V380 Decoder
-version: 0.2.0
+version: 0.5.1
 slug: v380decoder
 description: V380 camera LAN-protocol proxy (RTSP + ONVIF + snapshot + REST API)
 url: https://github.com/felipemarques/camera-v380decoder
@@ -32,4 +32,3 @@ schema:
   quality: list(hd|sd)
   enable_api: bool
   enable_onvif: bool
-image: ghcr.io/wesarby/ha-v380-{arch}

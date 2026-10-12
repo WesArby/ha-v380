@@ -1,10 +1,12 @@
 {
   "domain": "v380",
   "name": "V380 Pro",
-  "codeowners": [],
+  "codeowners": ["@WesArby"],
   "config_flow": true,
-  "documentation": "https://github.com/felipemarques/camera-v380decoder",
+  "documentation": "https://github.com/WesArby/ha-v380",
+  "issue_tracker": "https://github.com/WesArby/ha-v380/issues",
+  "integration_type": "device",
   "iot_class": "local_polling",
   "requirements": [],
-  "version": "0.2.0"
+  "version": "0.5.1"
 }

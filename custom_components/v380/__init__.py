@@ -6,11 +6,11 @@ from datetime import timedelta
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import V380Api, V380Error
 from .const import CONF_HTTP_PORT, CONF_RTSP_PORT, DEFAULT_HTTP_PORT, DEFAULT_RTSP_PORT, DOMAIN, PLATFORMS
@@ -37,8 +37,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             return await api.async_get_status()
         except V380Error as err:
-            _LOGGER.debug("V380 status poll failed: %s", err)
-            return {}
+            # Fail the coordinator (not an empty success) so entities go
+            # unavailable and automations can tell proxy-down apart from OK.
+            raise UpdateFailed(f"V380 proxy poll failed: {err}") from err
 
     coordinator: DataUpdateCoordinator[dict] = DataUpdateCoordinator(
         hass, _LOGGER, name=f"{DOMAIN} status", update_interval=SCAN_INTERVAL,
@@ -57,7 +58,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id, None)
+        data = hass.data[DOMAIN].pop(entry.entry_id, None)
+        if data and (coordinator := data.get("coordinator")) is not None:
+            await coordinator.async_shutdown()
     return unload_ok
 
 

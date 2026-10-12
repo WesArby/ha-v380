@@ -11,7 +11,16 @@ import asyncio
 
 import aiohttp
 
-from .const import API_ALARM, API_CONFIG, API_LIGHT, API_PTZ, API_SNAPSHOT, API_STATUS
+from .const import (
+    API_ALARM,
+    API_CONFIG,
+    API_LIGHT,
+    API_PIR_WAKE,
+    API_PTZ,
+    API_SNAPSHOT,
+    API_STATUS,
+    API_TIME_SYNC,
+)
 
 
 class V380Error(Exception):
@@ -61,7 +70,10 @@ class V380Api:
                 resp.raise_for_status()
                 data = await resp.json(content_type=None)
                 return data if isinstance(data, dict) else {"raw": data}
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as err:
+            # ValueError covers malformed JSON bodies (json.JSONDecodeError),
+            # so a corrupt proxy reply marks the coordinator failed instead
+            # of raising an unhandled exception.
             raise V380Error(f"Cannot reach V380 proxy at {self.base_url}: {err}") from err
 
     async def async_get_snapshot(self) -> bytes:
