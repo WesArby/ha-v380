@@ -7,7 +7,7 @@ WORKDIR /src
 # NOTE: build context is v380decoder/, with the PATCHED decoder source
 # vendored under decoder-src/ (per-type reassembly, decrypt-from-16,
 # wall-clock RTP, H265 passthrough, AAC audio, codec stickiness).
-COPY decoder-src/V380Decoder.csproj decoder-src/NuGet.Config ./
+COPY decoder-src/V380Decoder.csproj decoder-src/NuGet.Config decoder-src/Program.cs ./
 COPY decoder-src/src/ ./src/
 ARG TARGETARCH
 RUN set -e; \
