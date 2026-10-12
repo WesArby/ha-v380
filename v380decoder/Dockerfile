@@ -18,8 +18,8 @@ RUN set -e; \
     esac; \
     dotnet publish -c Release -r "${RID}" --self-contained false -o /out
 
-# ---- runtime stage (small, plus ffmpeg for snapshot decode) ----
-FROM mcr.microsoft.com/dotnet/runtime:10.0
+# ---- runtime stage (aspnet: the app hosts an ASP.NET Core web server) ----
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg jq \
  && rm -rf /var/lib/apt/lists/*
