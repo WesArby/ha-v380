@@ -35,6 +35,7 @@ namespace V380Decoder.src
         public int XParamVideoType { get; private set; } = -1;
         public string LastWifiHex { get; private set; } = "";
         public string LastBatteryHex { get; private set; } = "";
+        public int LoginBatteryByte { get; private set; } = -1;
         public DateTime LastWifiAt { get; private set; }
         public DateTime LastBatteryAt { get; private set; }
 
@@ -76,10 +77,8 @@ namespace V380Decoder.src
                     if (n <= 0) break;
                     tot += n;
                 }
-                if (tot < 24) { Console.Error.WriteLine($"[PIRWAKE] short len={tot}"); return false; }
-                uint cmd = ReadUInt32LE(resp, 0), res = ReadUInt32LE(resp, 4);
-                Console.Error.WriteLine($"[PIRWAKE] resp cmd={cmd} res={res} len={tot}");
-                if (cmd != 804 || res != 1001) return false;
+                if (tot < 24) return false;
+                if (ReadUInt32LE(resp, 0) != 804 || ReadUInt32LE(resp, 4) != 1001) return false;
                 PirWakeTime = ReadUInt16LE(resp, 13);
                 PirWakeInterval = ReadUInt16LE(resp, 19);
                 Console.Error.WriteLine($"[PIRWAKE] time={PirWakeTime}s interval={PirWakeInterval}s");
@@ -475,6 +474,10 @@ namespace V380Decoder.src
                 sessionId = session;
                 authTicket = ticket;
 
+                // Battery probe: app reads batteryStatus from login-reply
+                // block [71..102], index 20 -> absolute byte 91.
+                LoginBatteryByte = resp[91];
+                Console.Error.WriteLine($"[LOGIN71] {BitConverter.ToString(resp, 71, 32)} batt={LoginBatteryByte}");
                 Console.Error.WriteLine($"[AUTH] success ticket={authTicket} deviceVersion={deviceVersion}");
                 authStream.Close(); authClient.Close();
                 return 1;
@@ -1237,7 +1240,10 @@ namespace V380Decoder.src
                     int n = s.Read(buf, tot, max - tot);
                     if (n <= 0) break;
                     tot += n;
-                    if (tot >= 16) break;
+                    // Read until the full reply arrives (or timeout): callers
+                    // validate exact lengths (256/412), and the battery probe
+                    // needs bytes 71..102 of the login response.
+                    if (tot >= max) break;
                 }
                 else Thread.Sleep(10);
             }
@@ -1451,6 +1457,7 @@ namespace V380Decoder.src
                 fw_hw_date = FwHwDate,
                 device_time = DeviceTime,
                 tz_index = TimeZoneIndex,
+                login_battery = LoginBatteryByte,
                 pir_wake_time = PirWakeTime,
                 pir_wake_interval = PirWakeInterval,
                 wifi = LastWifiHex,
