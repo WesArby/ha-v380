@@ -29,5 +29,15 @@ namespace V380Decoder.src
         public int pir_wake_interval { get; set; } = -1;
         public string wifi { get; set; } = "";
         public string battery { get; set; } = "";
+        // Telemetry plane (frames 0x5B/0x5C). -1 / empty means "not received", which is
+        // the expected state whenever communicationVersion < 31 (see telemetry_gate).
+        public int comm_version { get; set; } = -1;
+        public bool telemetry_enabled { get; set; }
+        public short wifi_signal_raw { get; set; } = short.MinValue;
+        public int wifi_signal_indicator { get; set; } = -1;
+        public int wifi_channel { get; set; } = -1;
+        public int battery_percent { get; set; } = -1;
+        public int battery_power_state { get; set; } = -1;
+        public string battery_power_state_name { get; set; } = "";
     }
 }

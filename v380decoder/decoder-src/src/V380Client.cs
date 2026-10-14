@@ -39,6 +39,28 @@ namespace V380Decoder.src
         public DateTime LastWifiAt { get; private set; }
         public DateTime LastBatteryAt { get; private set; }
 
+        // Telemetry plane (frames 0x5B/0x5C). Only populated when the camera negotiates
+        // deviceCommunicationVersion >= 31; see the gate note in HandleAsMediaFrame.
+        public short WifiSignalRaw { get; private set; } = short.MinValue;
+        public int WifiSignalIndicator { get; private set; } = -1;
+        public int WifiChannel { get; private set; } = -1;
+        public int BatteryPercent { get; private set; } = -1;
+        public int BatteryPowerState { get; private set; } = -1;
+
+        /// <summary>Telemetry frame types the SDK enables at communication version 31.</summary>
+        public bool TelemetryEnabled => communicationVersion >= 31;
+
+        private static string PowerStateName(int s) => s switch
+        {
+            1 => "plugin",       // ABL_POWER_STATE_PLUGIN      = 1
+            2 => "battery",      // ABL_POWER_STATE_BATTERY     = 2
+            3 => "bat_charging", // ABL_POWER_STATE_BAT_CHARGING = 3
+            _ => "invalid",      // ABL_POWER_STATE_INVALID     = 0
+        };
+
+        /// <summary>Human-readable power state for the status JSON.</summary>
+        public string BatteryPowerStateName => PowerStateName(BatteryPowerState);
+
         // Firmware + clock (cmds 319/315/316, same envelope as XParam).
         public string FwApp { get; private set; } = "";
         public string FwAppDate { get; private set; } = "";
@@ -627,7 +649,7 @@ namespace V380Decoder.src
                 ? Console.OpenStandardOutput()
                 : null;
 
-            Console.Error.WriteLine($"[RECV] mode={mode} decrypt={needDecrypt} communicationVersion={communicationVersion}");
+            Console.Error.WriteLine($"[RECV] mode={mode} decrypt={needDecrypt} communicationVersion={communicationVersion} telemetry(0x5B-0x5F)={(communicationVersion >= 31 ? "ENABLED" : "DISABLED-by-firmware (<31)")}");
 
             try
             {
@@ -669,10 +691,12 @@ namespace V380Decoder.src
                     if (payloadBuf.Length < payLen) payloadBuf = new byte[payLen];
                     if (ReadExact(streamStream, payloadBuf, 0, payLen) < payLen) continue;
 
-                    if (type == 0x5B)
-                    {
-                        continue;
-                    }
+                    // NOTE: 0x5B (WiFi telemetry) and 0x5C (battery telemetry) must reach
+                    // HandleAsMediaFrame, which has a telemetry branch for exactly those two
+                    // types. An earlier `if (type == 0x5B) continue;` here discarded every
+                    // 0x5B frame before that branch could run, so the WiFi telemetry path
+                    // was unreachable by construction. Single-fragment telemetry frames do
+                    // not need reassembly; the branch at the media handler returns early.
 
                     var st = GetAsm(type);
                     if (curFrame == 0 || !st.Assembling || totalFrame != st.Total || curFrame != st.Next)
@@ -744,16 +768,49 @@ namespace V380Decoder.src
             ushort outerFrameRate = full.Length >= 8 ? ReadUInt16LE(full, 6) : (ushort)0;
             ulong outerTimestamp = full.Length >= 16 ? ReadUInt64LE(full, 8) : 0;
 
-            // Device telemetry (plaintext per parseFrameDataV20: 0x5B wifi and
-            // 0x5C battery go straight to callbacks with no decrypt).
-            if (rawType == 0x5B || rawType == 0x5C)
+            // Device telemetry. Per the SDK's HSLiveDataV2Transmitter::parseFrameDataV20
+            // switch (jump table @0x31078): 0x5B=WiFi, 0x5C=battery, 0x5D=PTZ cruise,
+            // 0x5E=cam zoom, 0x5F=private mode. Payload starts at full[16] (the inner
+            // header is 16 bytes). These frames are plaintext -- no decrypt.
+            //
+            // NOTE: the SDK hard-gates this whole range on deviceCommunicationVersion >= 31
+            // (parseFrameDataV20 @0x4a25c: `cmp w8,#0x1f; b.lt`). This camera negotiates
+            // communicationVersion = 20 (from the 301/401 stream-login reply, offset 8),
+            // so it never emits them. The parsing below is therefore dormant-but-correct:
+            // it costs one branch per frame and starts producing values if a firmware
+            // update or a different unit raises the negotiated version.
+            if (rawType == 0x5B)
             {
                 byte[] info = new byte[Math.Max(0, full.Length - 16)];
                 Array.Copy(full, 16, info, 0, info.Length);
-                string hex = BitConverter.ToString(info);
-                if (rawType == 0x5B) { LastWifiHex = hex; LastWifiAt = DateTime.Now; }
-                else { LastBatteryHex = hex; LastBatteryAt = DateTime.Now; }
-                Console.Error.WriteLine($"[TELEMETRY] type=0x{rawType:X2} len={info.Length} data={hex}");
+                LastWifiHex = BitConverter.ToString(info);
+                LastWifiAt = DateTime.Now;
+                if (info.Length >= 4)
+                {
+                    // tagWiFiSingleInfo: [0]=signal indicator, [1..2]=RSSI LE16, [3]=channel
+                    WifiSignalIndicator = info[0];
+                    WifiSignalRaw = (short)(info[1] | (info[2] << 8));
+                    WifiChannel = info[3];
+                    Console.Error.WriteLine($"[WIFI] rssi_raw={WifiSignalRaw} ind={WifiSignalIndicator} ch={WifiChannel}");
+                }
+                Console.Error.WriteLine($"[TELEMETRY] type=0x5B len={info.Length} data={LastWifiHex}");
+                return true;
+            }
+
+            if (rawType == 0x5C)
+            {
+                byte[] info = new byte[Math.Max(0, full.Length - 16)];
+                Array.Copy(full, 16, info, 0, info.Length);
+                LastBatteryHex = BitConverter.ToString(info);
+                LastBatteryAt = DateTime.Now;
+                if (info.Length >= 2)
+                {
+                    // tagBatteryInfo: [0]=capacity percent 0..100, [1]=power state
+                    BatteryPercent = info[0];
+                    BatteryPowerState = info[1];
+                    Console.Error.WriteLine($"[BATT] soc={BatteryPercent}% state={BatteryPowerState} ({PowerStateName(BatteryPowerState)})");
+                }
+                Console.Error.WriteLine($"[TELEMETRY] type=0x5C len={info.Length} data={LastBatteryHex}");
                 return true;
             }
 
@@ -1433,36 +1490,72 @@ namespace V380Decoder.src
             PtzV = st.PtzV;
         }
 
-        /// <summary>Live status object: fresh XParam read, cached fallback.</summary>
+        /// <summary>
+        /// Live status object. The XParam read is cached for <see cref="StatusCacheTtl"/>
+        /// because this is called on every /api/status request (the HA coordinator polls
+        /// it every 30s, and the web UI and REST clients poll it too). Each uncached call
+        /// is a fresh TCP connect + XParam read against a battery-powered camera, so
+        /// without a cache the load scales with the number of consumers.
+        /// </summary>
+        public static TimeSpan StatusCacheTtl = TimeSpan.FromSeconds(20);
+        private readonly object _statusLock = new object();
+        private DateTime _statusCachedAt = DateTime.MinValue;
+        private StatusResponse _statusCache;
+
         public StatusResponse GetStatus()
         {
-            var st = GetXParam();
-            if (st != null) ApplyXParamSnapshot(st);
-            return new StatusResponse
+            lock (_statusLock)
             {
-                status = "running",
-                timestamp = DateTime.Now,
-                power_source = PowerSource,
-                video_standard = VideoStandard,
-                speaker_vol = SpeakerVol,
-                xparam_rtsp = XParamRtspEnable,
-                xparam_vtype = XParamVideoType,
-                pir = Pir,
-                lamplight = Lamplight,
-                ptz_h = PtzH,
-                ptz_v = PtzV,
-                fw_app = FwApp,
-                fw_app_date = FwAppDate,
-                fw_hw = FwHw,
-                fw_hw_date = FwHwDate,
-                device_time = DeviceTime,
-                tz_index = TimeZoneIndex,
-                login_battery = LoginBatteryByte,
-                pir_wake_time = PirWakeTime,
-                pir_wake_interval = PirWakeInterval,
-                wifi = LastWifiHex,
-                battery = LastBatteryHex
-            };
+                // Note: device_time comes from XParam and is captured on refresh, so a
+                // cached reply can be up to StatusCacheTtl seconds old. InvalidateStatusCache()
+                // is called after every settings write so those reads stay immediate.
+                if (_statusCache != null && DateTime.UtcNow - _statusCachedAt < StatusCacheTtl)
+                    return _statusCache;
+
+                var st = GetXParam();
+                if (st != null) ApplyXParamSnapshot(st);
+                _statusCache = new StatusResponse
+                {
+                    status = "running",
+                    timestamp = DateTime.Now,
+                    power_source = PowerSource,
+                    video_standard = VideoStandard,
+                    speaker_vol = SpeakerVol,
+                    xparam_rtsp = XParamRtspEnable,
+                    xparam_vtype = XParamVideoType,
+                    pir = Pir,
+                    lamplight = Lamplight,
+                    ptz_h = PtzH,
+                    ptz_v = PtzV,
+                    fw_app = FwApp,
+                    fw_app_date = FwAppDate,
+                    fw_hw = FwHw,
+                    fw_hw_date = FwHwDate,
+                    device_time = DeviceTime,
+                    tz_index = TimeZoneIndex,
+                    login_battery = LoginBatteryByte,
+                    pir_wake_time = PirWakeTime,
+                    pir_wake_interval = PirWakeInterval,
+                    wifi = LastWifiHex,
+                    battery = LastBatteryHex,
+                    comm_version = communicationVersion,
+                    telemetry_enabled = TelemetryEnabled,
+                    wifi_signal_raw = WifiSignalRaw,
+                    wifi_signal_indicator = WifiSignalIndicator,
+                    wifi_channel = WifiChannel,
+                    battery_percent = BatteryPercent,
+                    battery_power_state = BatteryPowerState,
+                    battery_power_state_name = BatteryPowerStateName
+                };
+                _statusCachedAt = DateTime.UtcNow;
+                return _statusCache;
+            }
+        }
+
+        /// <summary>Force the next GetStatus() to re-read XParam (after a settings write).</summary>
+        public void InvalidateStatusCache()
+        {
+            lock (_statusLock) { _statusCache = null; _statusCachedAt = DateTime.MinValue; }
         }
 
         /// <summary>
