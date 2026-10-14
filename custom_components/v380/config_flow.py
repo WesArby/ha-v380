@@ -12,6 +12,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import V380Api, V380AuthError, V380Error
 from .const import (
+    CONF_API_TOKEN,
     CONF_HTTP_PORT,
     CONF_RTSP_PORT,
     DEFAULT_HTTP_PORT,
@@ -39,6 +40,7 @@ class V380ConfigFlow(ConfigFlow, domain=DOMAIN):
                 host,
                 user_input.get(CONF_HTTP_PORT, DEFAULT_HTTP_PORT),
                 user_input.get(CONF_RTSP_PORT, DEFAULT_RTSP_PORT),
+                user_input.get(CONF_API_TOKEN),
             )
             try:
                 await api.async_get_status()
@@ -58,6 +60,7 @@ class V380ConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_NAME, default="V380 Camera"): str,
                 vol.Optional(CONF_HTTP_PORT, default=DEFAULT_HTTP_PORT): int,
                 vol.Optional(CONF_RTSP_PORT, default=DEFAULT_RTSP_PORT): int,
+                vol.Optional(CONF_API_TOKEN, default=""): str,
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)

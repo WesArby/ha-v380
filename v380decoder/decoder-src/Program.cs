@@ -1,4 +1,4 @@
-﻿using V380Decoder.src;
+using V380Decoder.src;
 
 if (args.Length > 0)
 {
@@ -31,6 +31,7 @@ if (args.Length > 0)
     bool enableApi = ArgParser.GetArg(args, "--enable-api", false);
     int rtspPort = ArgParser.GetArg(args, "--rtsp-port", 8554);
     int httpPort = ArgParser.GetArg(args, "--http-port", 8080);
+    string apiToken = ArgParser.GetArg(args, "--api-token", "");
     int audioFlag = ArgParser.GetArg(args, "--audio-flag", 4097);
     int startCode = ArgParser.GetArg(args, "--start-code", 12289);
     bool debug = ArgParser.GetArg(args, "--debug", false);
@@ -103,7 +104,7 @@ if (args.Length > 0)
         rtsp = new(rtspPort);
         rtsp.Start();
 
-        webServer = new WebServer(httpPort, rtspPort, client, enableApi, enableOnvif);
+        webServer = new WebServer(httpPort, rtspPort, client, enableApi, enableOnvif, apiToken);
         webServer.Start();
     }
 
@@ -208,7 +209,13 @@ SERVER OPTIONS:
   
   --http-port <number>   Web API server port (default: 8080)
                          Example: --http-port 8080
-  
+
+  --api-token <string>   Shared secret for the HTTP surface (default: none = open)
+                         When set, /, /snapshot, /stream.mjpg, /api/* and the ONVIF
+                         routes require the token via `X-Auth-Token: <token>` or
+                         `?token=<token>`. Leave unset for an open LAN service.
+                         Example: --api-token mylongrandomsecret
+
   --enable-onvif         Enable ONVIF server (experimental) (default: false)
                          Works only with --output rtsp
                          Tested with Onvif Device Manager (ODM)

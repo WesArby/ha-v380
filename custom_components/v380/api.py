@@ -40,11 +40,18 @@ class V380Api:
         host: str,
         http_port: int = 8080,
         rtsp_port: int = 8554,
+        api_token: str | None = None,
     ) -> None:
         self._session = session
         self.host = host
         self.http_port = http_port
         self.rtsp_port = rtsp_port
+        self._api_token = (api_token or "").strip() or None
+
+    @property
+    def _headers(self) -> dict[str, str]:
+        """Auth header for the proxy's optional token gate."""
+        return {"X-Auth-Token": self._api_token} if self._api_token else {}
 
     @property
     def base_url(self) -> str:
@@ -56,7 +63,12 @@ class V380Api:
 
     @property
     def snapshot_url(self) -> str:
-        return f"{self.base_url}{API_SNAPSHOT}"
+        """Snapshot URL. The token rides as a query param because HA fetches
+        this URL directly (image proxy) and cannot add headers."""
+        url = f"{self.base_url}{API_SNAPSHOT}"
+        if self._api_token:
+            url = f"{url}?token={self._api_token}"
+        return url
 
     async def async_get_status(self) -> dict:
         """Return decoder status; raises V380Error when unreachable."""
@@ -64,6 +76,7 @@ class V380Api:
             async with self._session.get(
                 f"{self.base_url}{API_STATUS}",
                 timeout=aiohttp.ClientTimeout(total=10),
+                headers=self._headers,
             ) as resp:
                 if resp.status in (401, 403):
                     raise V380AuthError(f"HTTP {resp.status}")
@@ -80,7 +93,8 @@ class V380Api:
         """Fetch the latest JPEG snapshot."""
         try:
             async with self._session.get(
-                self.snapshot_url, timeout=aiohttp.ClientTimeout(total=15)
+                self.snapshot_url, timeout=aiohttp.ClientTimeout(total=15),
+                headers=self._headers,
             ) as resp:
                 resp.raise_for_status()
                 return await resp.read()
@@ -93,6 +107,7 @@ class V380Api:
             async with self._session.post(
                 f"{self.base_url}{API_PTZ.format(direction=direction)}",
                 timeout=aiohttp.ClientTimeout(total=10),
+                headers=self._headers,
             ) as resp:
                 resp.raise_for_status()
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
@@ -104,6 +119,7 @@ class V380Api:
             async with self._session.post(
                 f"{self.base_url}{API_LIGHT.format(mode=mode)}",
                 timeout=aiohttp.ClientTimeout(total=10),
+                headers=self._headers,
             ) as resp:
                 resp.raise_for_status()
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
@@ -116,6 +132,7 @@ class V380Api:
             async with self._session.post(
                 f"{self.base_url}{API_ALARM.format(action=action)}",
                 timeout=aiohttp.ClientTimeout(total=15),
+                headers=self._headers,
             ) as resp:
                 resp.raise_for_status()
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
@@ -129,6 +146,7 @@ class V380Api:
                 f"{self.base_url}{API_CONFIG}",
                 json=values,
                 timeout=aiohttp.ClientTimeout(total=20),
+                headers=self._headers,
             ) as resp:
                 resp.raise_for_status()
                 data = await resp.json(content_type=None)
@@ -142,6 +160,7 @@ class V380Api:
             async with self._session.post(
                 f"{self.base_url}{API_TIME_SYNC}",
                 timeout=aiohttp.ClientTimeout(total=20),
+                headers=self._headers,
             ) as resp:
                 resp.raise_for_status()
                 data = await resp.json(content_type=None)
@@ -156,6 +175,7 @@ class V380Api:
                 f"{self.base_url}{API_PIR_WAKE}",
                 json={"time": str(time_s), "interval": str(interval_s)},
                 timeout=aiohttp.ClientTimeout(total=20),
+                headers=self._headers,
             ) as resp:
                 resp.raise_for_status()
                 data = await resp.json(content_type=None)

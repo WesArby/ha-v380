@@ -15,15 +15,49 @@ namespace V380Decoder.src
         private readonly int rtspPort;
         private readonly bool enableApi;
         private readonly bool enableOnvif;
+        private readonly string apiToken;
         private WebApplication app;
         private Task runTask;
-        public WebServer(int httpPort, int rtspPort, V380Client client, bool enableApi, bool enableOnvif)
+        public WebServer(int httpPort, int rtspPort, V380Client client, bool enableApi, bool enableOnvif, string apiToken = null)
         {
             this.httpPort = httpPort;
             this.rtspPort = rtspPort;
             this.client = client;
             this.enableApi = enableApi;
             this.enableOnvif = enableOnvif;
+            this.apiToken = apiToken;
+        }
+
+        /// <summary>
+        /// Optional shared-secret gate for the HTTP surface. Only installed when --api-token
+        /// is supplied, so existing deployments are unaffected. Accepts the token as either
+        /// `X-Auth-Token: <token>` or `?token=<token>` (the latter so a browser can open the
+        /// web UI and the snapshot/MJPEG endpoints directly).
+        /// </summary>
+        private void AddTokenGate(WebApplication application)
+        {
+            if (string.IsNullOrEmpty(apiToken)) return;
+            application.Use(async (ctx, next) =>
+            {
+                var supplied = ctx.Request.Headers["X-Auth-Token"].ToString();
+                if (string.IsNullOrEmpty(supplied)) supplied = ctx.Request.Query["token"].ToString();
+                if (!FixedTimeEquals(supplied, apiToken))
+                {
+                    ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    await ctx.Response.WriteAsync("unauthorized");
+                    return;
+                }
+                await next();
+            });
+        }
+
+        private static bool FixedTimeEquals(string a, string b)
+        {
+            if (a == null || b == null) return false;
+            var x = System.Text.Encoding.UTF8.GetBytes(a);
+            var y = System.Text.Encoding.UTF8.GetBytes(b);
+            if (x.Length != y.Length) return false;
+            return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(x, y);
         }
 
         public void Start()
@@ -39,6 +73,9 @@ namespace V380Decoder.src
             });
 
             app = builder.Build();
+            AddTokenGate(app);
+            if (!string.IsNullOrEmpty(apiToken))
+                Console.Error.WriteLine("[AUTH] HTTP token gate enabled");
 
             Console.Error.WriteLine($"[SNAPSHOT] http://{ipAddress}:{httpPort}/snapshot");
             app.MapGet("/snapshot", (HttpContext ctx) =>
@@ -121,6 +158,7 @@ namespace V380Decoder.src
 
                 app.MapPost("/api/config", (System.Collections.Generic.Dictionary<string, string> kv) => {
                     var (ok, info) = client.ApplySettings(kv ?? new System.Collections.Generic.Dictionary<string, string>());
+                    if (ok) client.InvalidateStatusCache();
                     LogUtils.debug($"[API] Config -> {ok} {info}");
                     return ok ? Results.Ok(new { applied = info }) : Results.Json(new { error = info }, statusCode: 500);
                 });
@@ -128,12 +166,14 @@ namespace V380Decoder.src
                 app.MapPost("/api/time/sync", (HttpContext ctx) => {
                     int? tz = int.TryParse(ctx.Request.Query["tz"], out var t) ? t : null;
                     var (ok, info) = client.SyncTime(tz);
+                    if (ok) client.InvalidateStatusCache();
                     LogUtils.debug($"[API] Time sync -> {ok} {info}");
                     return ok ? Results.Ok(new { device_time = info }) : Results.Json(new { error = info }, statusCode: 500);
                 });
 
                 app.MapGet("/api/pir/wake", () => {
                     bool ok = client.FetchPirWake();
+                    if (ok) client.InvalidateStatusCache();
                     return ok ? Results.Ok(new { time = client.PirWakeTime, interval = client.PirWakeInterval })
                               : Results.Json(new { error = "read-failed" }, statusCode: 500);
                 });
@@ -143,6 +183,7 @@ namespace V380Decoder.src
                         || !int.TryParse(ts, out int timeS) || !int.TryParse(iv, out int intervalS))
                         return Results.Json(new { error = "need {time, interval} seconds" }, statusCode: 400);
                     var (ok, info) = client.SetPirWake(timeS, intervalS);
+                    if (ok) client.InvalidateStatusCache();
                     LogUtils.debug($"[API] PIR wake -> {ok} {info}");
                     return ok ? Results.Ok(new { applied = info }) : Results.Json(new { error = info }, statusCode: 500);
                 });

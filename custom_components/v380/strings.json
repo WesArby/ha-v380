@@ -2,7 +2,20 @@
   "config": {
     "title": "V380 Pro",
     "description": "Bridge a V380 camera via its decoder proxy (RTSP, snapshot, PTZ, floodlight).",
-    "flow_title": "V380 Pro"
+    "flow_title": "V380 Pro",
+    "step": {
+      "user": {
+        "title": "Connect V380 decoder proxy",
+        "description": "Point this at a running camera-v380decoder instance (HTTP API port, default 8080). The camera stream, snapshots, PTZ and floodlight are all served from there.",
+        "data": {
+          "host": "Proxy host (IP or hostname)",
+          "name": "Device name",
+          "http_port": "HTTP API port",
+          "rtsp_port": "RTSP port",
+          "api_token": "Proxy API token (leave empty unless the decoder was started with --api-token)"
+        }
+      }
+    }
   },
   "selector": {},
   "entity": {

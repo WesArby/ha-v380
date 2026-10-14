@@ -5,6 +5,7 @@ DOMAIN = "v380"
 CONF_HTTP_PORT = "http_port"
 CONF_RTSP_PORT = "rtsp_port"
 CONF_DEVICE_ID = "device_id"
+CONF_API_TOKEN = "api_token"
 
 DEFAULT_HTTP_PORT = 8080
 DEFAULT_RTSP_PORT = 8554

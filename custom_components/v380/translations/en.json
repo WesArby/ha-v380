@@ -8,7 +8,8 @@
           "host": "Proxy host (IP or hostname)",
           "name": "Device name",
           "http_port": "HTTP API port",
-          "rtsp_port": "RTSP port"
+          "rtsp_port": "RTSP port",
+          "api_token": "Proxy API token (leave empty unless the decoder was started with --api-token)"
         }
       }
     },

@@ -13,7 +13,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import V380Api, V380Error
-from .const import CONF_HTTP_PORT, CONF_RTSP_PORT, DEFAULT_HTTP_PORT, DEFAULT_RTSP_PORT, DOMAIN, PLATFORMS
+from .const import CONF_API_TOKEN, CONF_HTTP_PORT, CONF_RTSP_PORT, DEFAULT_HTTP_PORT, DEFAULT_RTSP_PORT, DOMAIN, PLATFORMS
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
@@ -27,6 +27,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data[CONF_HOST],
         entry.data.get(CONF_HTTP_PORT, DEFAULT_HTTP_PORT),
         entry.data.get(CONF_RTSP_PORT, DEFAULT_RTSP_PORT),
+        entry.data.get(CONF_API_TOKEN),
     )
     try:
         await api.async_get_status()
